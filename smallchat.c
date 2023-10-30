@@ -119,7 +119,7 @@ int socketSetNonBlockNoDelay(int fd) {
  * be accepted, we accept(2) it and return -1 on error or the new client
  * socket on success. */
 int acceptClient(int server_socket) {
-    int s;
+    int s;// s is the client socket.
 
     while(1) {
         struct sockaddr_in sa;
@@ -293,7 +293,7 @@ int main(void) {
             for (int j = 0; j <= Chat->maxclient; j++) {
                 if (Chat->clients[j] == NULL) continue;
                 if (FD_ISSET(j, &readfds)) {
-                    /* Here we just hope that there is a well formed
+                    /* Here we just hope that ther
                      * message waiting for us. But it is entirely possible
                      * that we read just half a message. In a normal program
                      * that is not designed to be that simple, we should try
