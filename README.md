@@ -6,9 +6,7 @@ This repository is a fork of https://github.com/antirez/smallchat
 
 Mainly using it to help me better understating socket programming and adding new features for fun.
 
-## New Features Im planning to add
-
-### Basic ones
+## Upcoming Features I Intend to Implement
 
 1. Timestamps: Add timestamps to messages [completed 30-Oct-2023 ]
 2. Online Users List: Show a list of currently connected users.
