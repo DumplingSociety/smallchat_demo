@@ -1,12 +1,21 @@
 # Smallchat
 
-TLDR: This is just a programming example for a few friends of mine. Long story follows.
+## A minimal programming example for a chat server
 
-Yesterday I was talking with a few friends of mine, front-end developers mostly, that are a bit far from system programming. We were remembering the old times of IRC. And inevitably I said: to write a very simple IRC server is an experience everybody should do. There are very interesting parts in a program like that. A single process doing multiplexing, taking the client state, that can be done in different ways, and so forth.
+This is a fork from https://github.com/antirez/smallchat
 
-But then the discussion evolved and I thought, I'll show you a very minimal example in C. But what is the smallest chat server you can write? For starters to be truly minimal we should not require any proper client. Even if not very well, it should work with `telnet` or `nc` (netcat). The server main operation is just to receive some chat line and send it to all the other clients, in what is sometimes called a fan-out operation. But yet, this would require a proper readline() function, then buffering, and so forth. We want it simpler: let's cheat using the kernel buffers, and pretending we every time receive a full-formed line from the client (an assumption that is in the practice often true, so things kinda work).
+Mainly using it to help me better understating socket programming and adding new features for fun.
 
-Well, with this tricks we can implement a chat that even has the ability to
-let the user set their nick in just 200 lines of code (removing spaces
-and comments, of course). Since I wrote this little program as an example for
-my friends, I decided to also push it here on Github.
+## New Features Im planning to add
+
+### Basic ones
+
+1. Timestamps: Add timestamps to messages [completed 30-Oct-2023 ]
+2. Online Users List: Show a list of currently connected users.
+3. Message Formatting: Allow users to format their text, like asterisks for bold text?
+4. Direct Message: Allow users to send private message
+5. Message History: Store the last N messages and show them to users when they join
+6. User Authentication: add a simple username and password authentication step
+7. File Sharing
+8. Encryption: between the server and clients
+9. Multi-threaded
