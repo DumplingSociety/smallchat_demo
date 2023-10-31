@@ -2,7 +2,7 @@
 
 ## A minimal programming example for a chat server
 
-This is a fork from https://github.com/antirez/smallchat
+This repository is a fork of https://github.com/antirez/smallchat
 
 Mainly using it to help me better understating socket programming and adding new features for fun.
 
