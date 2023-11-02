@@ -391,10 +391,27 @@ int main(void)
 
                             if (!strcmp(readbuf, "/nick") && arg)
                             {
-                                free(c->nick);
-                                int nicklen = strlen(arg);
-                                c->nick = chatMalloc(nicklen + 1);
-                                memcpy(c->nick, arg, nicklen + 1);
+                                free(c->nick); // Free old nick.
+                                int nicklen = strlen(arg); // New nick length.
+                                c->nick = chatMalloc(nicklen + 1); // Allocate new nick.
+                                memcpy(c->nick, arg, nicklen + 1); // Set new nick.
+                            }
+                            else if (!strcmp(readbuf, "/list"))
+                            {
+                                // list each client name 
+                                char userlist[256];
+                                char listmsg[256];
+                                memset(userlist, 0, sizeof(userlist));
+                                 for (int i = 0; i <= Chat->maxclient; i++) {
+                                    if (Chat->clients[i]) {
+                                        strcat(userlist, Chat->clients[i]->nick);
+                                        strcat(userlist, "\n");
+                                    }
+                                }
+                                write(c->fd, userlist, strlen(userlist)); // send the list to the client
+                                // send the number of connected users to the client 
+                                int msglen = snprintf(listmsg, sizeof(listmsg), "Number of connected users: %d\n", Chat->numclients);
+                                write(c->fd, listmsg, msglen);
                             }
                             else
                             {
