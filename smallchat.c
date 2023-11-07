@@ -59,6 +59,9 @@ struct client
 {
     int fd;     // Client socket.
     char *nick; // Nickname of the client.
+    char *readbuf;   // Dynamic buffer for partial reads.
+    size_t buflen;   // Length of the buffer.
+    size_t bufused;  // How much of the buffer is used.
 };
 
 /* This global structure encasulates the global state of the chat. */
@@ -83,19 +86,24 @@ struct chatState *Chat; // Initialized at startup.
 /* Create a TCP socket lisetning to 'port' ready to accept connections. */
 int createTCPServer(int port)
 {
-    int s, yes = 1;
+    int s, yes = 1; // s is the server socket, yes is used to reuse the port.
     struct sockaddr_in sa;
-
+    // create a socket. it uses TCP (SOCK_STREAM ensure that data is not lost or duplicated) and IPv4
     if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1)
         return -1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)); // Best effort.
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)); // Best effort to lose "Address already in use" error message.
 
-    memset(&sa, 0, sizeof(sa));
-    sa.sin_family = AF_INET;
-    sa.sin_port = htons(port);
-    sa.sin_addr.s_addr = htonl(INADDR_ANY);
+    memset(&sa, 0, sizeof(sa)); // Zero the structure.
+    sa.sin_family = AF_INET; // IPv4.
+    sa.sin_port = htons(port); // Host to network endian conversion.
+    sa.sin_addr.s_addr = htonl(INADDR_ANY); // Accept connections from any addr.
 
-    if (bind(s, (struct sockaddr *)&sa, sizeof(sa)) == -1 ||
+    /*bind the socket to the address and port
+     assigns the address specified by addr to the socket referred to by the file descriptor sockfd
+     s -- the sockfd (socket)
+     sa -- the address to bind to
+     sizeof(sa) -- the size of the address */
+    if (bind(s, (struct sockaddr *)&sa, sizeof(sa)) == -1 || 
         listen(s, 511) == -1)
     {
         close(s);
@@ -107,7 +115,7 @@ int createTCPServer(int port)
 /* Set the specified socket in non-blocking mode, with no delay flag. */
 int socketSetNonBlockNoDelay(int fd)
 {
-    int flags, yes = 1;
+    int flags, yes = 1;// reuse the port
 
     /* Set the socket nonblocking.
      * Note that fcntl(2) for F_GETFL and F_SETFL can't be
@@ -117,7 +125,7 @@ int socketSetNonBlockNoDelay(int fd)
     if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
         return -1;
 
-    /* This is best-effort. No need to check for errors. */
+    /* This is best-effort. No need to check for errors; lose the pesky "Address already in use" error message */
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
     return 0;
 }
@@ -132,8 +140,8 @@ int acceptClient(int server_socket)
     while (1)
     {
         struct sockaddr_in sa;
-        socklen_t slen = sizeof(sa);
-        s = accept(server_socket, (struct sockaddr *)&sa, &slen);
+        socklen_t slen = sizeof(sa); // get the size of the address
+        s = accept(server_socket, (struct sockaddr *)&sa, &slen); // accept a new client connection, s is the client socket
         if (s == -1)
         {
             if (errno == EINTR)
@@ -172,6 +180,27 @@ void *chatRealloc(void *ptr, size_t size)
     }
     return ptr;
 }
+/* desc : handle direct message
+sender -- the client who sent the DM
+target_nick -- the target client's name
+message -- the message to be sent*/
+void handleDirectMessage(struct client *sender, char *target_nick, char *message) {
+    for (int j = 0; j <= Chat->maxclient; j++) {
+        struct client *target = Chat->clients[j];
+        if (target && strcmp(target->nick, target_nick) == 0) {
+            // Construct the direct message
+            char dm[512]; // Make sure this is large enough
+            snprintf(dm, sizeof(dm), "DM from %s: %s", sender->nick, message);
+            // Send the DM to the target client only
+            write(target->fd, dm, strlen(dm));
+            return; // DM sent, return early
+        }
+    }
+    // If we reach here, the target user was not found
+    char *errmsg = "User not found\n";
+    write(sender->fd, errmsg, strlen(errmsg));
+}
+
 
 /* ====================== Small chat core implementation ========================
  * Here the idea is very simple: we accept new connections, read what clients
@@ -182,19 +211,21 @@ void *chatRealloc(void *ptr, size_t size)
 
 /* Create a new client bound to 'fd'. This is called when a new client
  * connects. As a side effect updates the global Chat state. */
-struct client *createClient(int fd)
-{
+struct client *createClient(int fd) {
     char nick[32]; // Used to create an initial nick for the user.
     int nicklen = snprintf(nick, sizeof(nick), "user:%d", fd);
     struct client *c = chatMalloc(sizeof(*c));
     socketSetNonBlockNoDelay(fd); // Pretend this will not fail.
     c->fd = fd;
-    c->nick = chatMalloc(nicklen + 1);
+    c->nick = chatMalloc(nicklen + 1); // +1 because of the null term.
+    c->readbuf = chatMalloc(256);      // Initial buffer size.
+    c->buflen = 256;
+    c->bufused = 0;
     memcpy(c->nick, nick, nicklen);
     assert(Chat->clients[c->fd] == NULL); // This should be available.
     Chat->clients[c->fd] = c;
     /* We need to update the max client set if needed. */
-    if (c->fd > Chat->maxclient)
+    if ((c->fd) > (Chat->maxclient))
         Chat->maxclient = c->fd;
     Chat->numclients++;
     return c;
@@ -271,7 +302,7 @@ void sendMsgToAllClientsBut(int excluded, char *s, size_t len)
         /* Important: we don't do ANY BUFFERING. We just use the kernel
          * socket buffers. If the content does not fit, we don't care.
          * This is needed in order to keep this program simple. */
-        write(Chat->clients[j]->fd, msg_with_time, len);
+        write(Chat->clients[j]->fd, msg_with_time, len); // send the message to the client
     }
 }
 
@@ -298,7 +329,7 @@ int main(void)
         for (int j = 0; j <= Chat->maxclient; j++)
         {
             if (Chat->clients[j])
-                FD_SET(j, &readfds);
+                FD_SET(j, &readfds); // FD_SET is a macro that sets the bit for the file descriptor j in the file descriptor set readfds. this add the client socket to the readfds set
         }
 
         /* Set a timeout for select(), see later why this may be useful
@@ -323,7 +354,7 @@ int main(void)
 
             /* If the listening socket is "readable", it actually means
              * there are new clients connections pending to accept. */
-            if (FD_ISSET(Chat->serversock, &readfds))
+            if (FD_ISSET(Chat->serversock, &readfds)) // This is a macro that returns true if the bit for the file descriptor Chat->serversock is set in the file descriptor set readfds.
             {
                 int fd = acceptClient(Chat->serversock);
                 struct client *c = createClient(fd);
@@ -342,7 +373,7 @@ int main(void)
             {
                 if (Chat->clients[j] == NULL)
                     continue;
-                if (FD_ISSET(j, &readfds))
+                if (FD_ISSET(j, &readfds)) // This is a macro that returns true if the bit for the file descriptor j is set in the file descriptor set readfds.
                 {
                     /* Here we just hope that ther
                      * message waiting for us. But it is entirely possible
@@ -350,7 +381,7 @@ int main(void)
                      * that is not designed to be that simple, we should try
                      * to buffer reads until the end-of-the-line is reached. */
                     int nread = read(j, readbuf, sizeof(readbuf) - 1);
-
+                   
                     if (nread <= 0)
                     {
                         /* Error or short read means that the socket
@@ -412,6 +443,19 @@ int main(void)
                                 // send the number of connected users to the client 
                                 int msglen = snprintf(listmsg, sizeof(listmsg), "Number of connected users: %d\n", Chat->numclients);
                                 write(c->fd, listmsg, msglen);
+                            }
+                            else if (!strcmp(readbuf, "/dm"))
+                            {
+                                char *space_ptr = strchr(arg, ' ');
+                                int nick_length = space_ptr - arg; 
+                                char target_nick[nick_length + 1];
+                                strncpy(target_nick, arg, nick_length);
+                                target_nick[nick_length] = '\0';
+
+                                space_ptr++; // skip the space
+                                 char *message = space_ptr;
+                                // Call a function to handle DM
+                                handleDirectMessage(c, target_nick, message);
                             }
                             else
                             {
