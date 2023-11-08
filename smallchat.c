@@ -185,9 +185,10 @@ sender -- the client who sent the DM
 target_nick -- the target client's name
 message -- the message to be sent*/
 void handleDirectMessage(struct client *sender, char *target_nick, char *message) {
+    // Check if the target user is found
     for (int j = 0; j <= Chat->maxclient; j++) {
-        struct client *target = Chat->clients[j];
-        if (target && strcmp(target->nick, target_nick) == 0) {
+        struct client *target = Chat->clients[j]; // Get the client
+        if (target && strcmp(target->nick, target_nick) == 0) { // Check if the client is found and the nick matches
             // Construct the direct message
             char dm[512]; // Make sure this is large enough
             snprintf(dm, sizeof(dm), "DM from %s: %s", sender->nick, message);
@@ -446,14 +447,14 @@ int main(void)
                             }
                             else if (!strcmp(readbuf, "/dm"))
                             {
-                                char *space_ptr = strchr(arg, ' ');
-                                int nick_length = space_ptr - arg; 
-                                char target_nick[nick_length + 1];
-                                strncpy(target_nick, arg, nick_length);
-                                target_nick[nick_length] = '\0';
+                                char *target_nick = strtok(arg, " "); // Get the first token after "/dm" as the target nickname
+                                char *message = strtok(NULL, ""); // Get the rest of the input as the message
 
-                                space_ptr++; // skip the space
-                                 char *message = space_ptr;
+                                // Check if we got a target nickname and a message
+                                if (target_nick == NULL || message == NULL) {
+                                    printf("Error: The format is /dm <nickname> <message>\n");
+                                    continue; // Skip this iteration and wait for a new message
+                                }
                                 // Call a function to handle DM
                                 handleDirectMessage(c, target_nick, message);
                             }
